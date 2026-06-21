@@ -40,7 +40,7 @@
   vars:
     repo_url: "https://github.com/nsarumathi/HV_TravelMemory.git"
     app_dir: "/var/www/TravelMemory"
-    atlas_mongo_uri: "mongodb+srv://admin:admin1234@cluster0.iz9ritv.mongodb.net/travelmemory?retryWrites=true&w=majority"
+    atlas_mongo_uri: "<MongodbURI>"
 
   tasks:
     - name: Install Node.js setup prerequisites
