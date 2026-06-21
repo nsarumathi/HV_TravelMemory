@@ -35,11 +35,12 @@ Architecture:
 
 Execution Steps
 -----------------------------
-Step 1 : Create a Practice EC2 Instance.
+**Step 1 : Create a Practice EC2 Instance.**
 
 <img width="1717" height="697" alt="EC2_creation" src="https://github.com/user-attachments/assets/f30121a0-ac9e-4cb9-8a99-1a4232edda2e" />
 
-Step 2 : Install required tools in Pratice EC2 Instance to run terraform & ansible configuration
+**Step 2 : Install required tools in Pratice EC2 Instance to run terraform & ansible configuration**
+
     AWS CLI
     Terraform
     Ansible
@@ -47,21 +48,22 @@ Step 2 : Install required tools in Pratice EC2 Instance to run terraform & ansib
     
 <img width="1582" height="547" alt="Dependencies" src="https://github.com/user-attachments/assets/55ce068c-888d-482b-9600-b930f3885600" />
 
-Step 3 :Configure AWS CLI & Upload ssh Key
+**Step 3 :Configure AWS CLI & Upload ssh Key**
 
 <img width="1617" height="852" alt="terraform_troubleshoot_awsconfigure" src="https://github.com/user-attachments/assets/b6e4da34-fb1d-44a1-afa0-383237376b55" />
 
-Step 4 :Create Terraform Workspace & configure terraform files
+**Step 4 :Create Terraform Workspace & configure terraform files**
 
 <img width="1050" height="831" alt="terraform_dir" src="https://github.com/user-attachments/assets/aed97f9f-8a0f-4e79-abe7-c73b952e6d8f" />
 
+Check in attached terraform_project folder where .tf files added in this above format 
 
-Step 5: Deploy Infrastructure using terraform commands
+**Step 5: Deploy Infrastructure using terraform commands**
 
 <img width="1320" height="852" alt="terraform_apply" src="https://github.com/user-attachments/assets/70cebad8-7596-4b00-82ad-b493e3386a8a" />
 <img width="1617" height="852" alt="terraform_troubleshoot_awsconfigure" src="https://github.com/user-attachments/assets/b6e4da34-fb1d-44a1-afa0-383237376b55" />
 
-Step 6 :Terraform Resources created
+**Step 6 :Terraform Resources creation**
 
 Web_EC2 with securirty group:
 
@@ -74,21 +76,26 @@ DB_EC2 with security group:
 <img width="1722" height="565" alt="db_securitygp" src="https://github.com/user-attachments/assets/845acf18-bbad-471d-b2ab-c9c7a8895668" />
 
 VPC:
+
 <img width="1711" height="662" alt="vpc" src="https://github.com/user-attachments/assets/b348602e-67f8-47a2-9697-01efd1868e70" />
 
-Step 7 :Create Ansible Workspace with Deployment approaches
+**Step 7 :Create Ansible Workspace with Deployment approaches**
 
-1.MongoDB hosted on Private EC2 Database Server
+  1.MongoDB hosted on Private EC2 Database Server
+
+Check in attached ansible folder where config files added in this above format 
 
 <img width="1620" height="882" alt="ansibleping_v1" src="https://github.com/user-attachments/assets/b1d21f28-3682-44ac-ab4e-d655640c4643" />
 
-2.MongoDB Atlas Cloud Database
+  2.MongoDB Atlas Cloud Database
+
+Check in attached ansible_single folder where config files added in this above format 
 
 <img width="1617" height="887" alt="ansible_v2_modbatlas" src="https://github.com/user-attachments/assets/8a379c19-a467-4d14-a126-68b53d1894f1" />
 
-Step 8 : Run Ansible Playbooks
+**Step 8 : Run Ansible Playbooks**
 
-Deployment 1:
+  Deployment 1:
 <img width="1621" height="882" alt="ansible_Deploy_v1" src="https://github.com/user-attachments/assets/8feb3db0-7fb2-435e-b63c-1d70cbfcccd3" />
 
 Web EC2 Connection:
@@ -124,3 +131,11 @@ Cleanup
 ---------------------------------------
 
 Destroy infrastructure: terraform destroy
+
+Output
+--------------------------
+Videos attached under submission_videos to demonstrate the mern application deployment
+
+Author
+--------------
+Sarumathi N
