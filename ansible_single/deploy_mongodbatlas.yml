@@ -1,0 +1,167 @@
+---
+# ==========================================
+# STAGE 1: GLOBAL SECURITY HARDENING
+# ==========================================
+- name: Apply System Hardening on Web Server
+  hosts: web
+  become: yes
+  tasks:
+    - name: Update apt cache and upgrade system packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Disable Root Login via SSH
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitRootLogin'
+        line: 'PermitRootLogin no'
+      notify: Restart SSH
+
+    - name: Disable Password Authentication via SSH
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+      notify: Restart SSH
+
+  handlers:
+    - name: Restart SSH
+      service:
+        name: ssh
+        state: restarted
+
+# ==========================================
+# STAGE 2: WEB SERVER SETUP & MERN DEPLOYMENT
+# ==========================================
+- name: Configure Web Server and Deploy App to MongoDB Atlas
+  hosts: web
+  become: yes
+  vars:
+    repo_url: "https://github.com/nsarumathi/HV_TravelMemory.git"
+    app_dir: "/var/www/TravelMemory"
+    atlas_mongo_uri: "mongodb+srv://admin:admin1234@cluster0.iz9ritv.mongodb.net/travelmemory?retryWrites=true&w=majority"
+
+  tasks:
+    - name: Install Node.js setup prerequisites
+      apt:
+        name: [curl, git, ufw]
+        state: present
+
+    - name: Download Node.js v20 Setup Script
+      get_url:
+        url: https://deb.nodesource.com/setup_20.x
+        dest: /tmp/node_setup.sh
+        mode: '0755'
+
+    - name: Execute Node.js Setup Script
+      command: /tmp/node_setup.sh
+
+    - name: Install Node.js and NPM
+      apt:
+        name: nodejs
+        state: present
+
+    - name: Install PM2 globally to manage background Node.js processes
+      npm:
+        name: pm2
+        global: yes
+
+    # ---- CLEAN SLATE RESET TASKS ----
+    - name: Stop and clear all existing PM2 background processes
+      shell: pm2 delete all || true
+      ignore_errors: yes
+      become: no
+
+    - name: Completely delete old application directory if it exists
+      file:
+        path: "{{ app_dir }}"
+        state: absent
+
+    - name: Recreate a clean application base directory structure
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+    # ----------------------------------
+
+    - name: Clone the TravelMemory Code Repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        force: yes
+      become: no
+
+    # ---- Express Backend Configuration ----
+    - name: Install Backend Application Dependencies
+      npm:
+        path: "{{ app_dir }}/backend"
+      become: no
+
+    - name: Provision Backend Environment Variables (.env for Atlas)
+      copy:
+        dest: "{{ app_dir }}/backend/.env"
+        content: |
+          PORT=3001
+          MONGO_URI={{ atlas_mongo_uri }}
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    # ---- React Frontend Configuration ----
+    - name: Install Frontend Application Dependencies
+      npm:
+        path: "{{ app_dir }}/frontend"
+      become: no
+
+    - name: Configure Frontend Connection URL (.env)
+      copy:
+        dest: "{{ app_dir }}/frontend/.env"
+        content: |
+          REACT_APP_BACKEND_URL=http://{{ ansible_host }}:3001
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    # ---- Network Firewall Management (UFW) ----
+    - name: Configure UFW - Allow SSH Connection
+      ufw:
+        rule: allow
+        port: '22'
+        proto: tcp
+
+    - name: Configure UFW - Allow Frontend Interface Traffic (React)
+      ufw:
+        rule: allow
+        port: '3000'
+        proto: tcp
+
+    - name: Configure UFW - Allow Backend API Traffic (Express)
+      ufw:
+        rule: allow
+        port: '3001'
+        proto: tcp
+
+    - name: Enable Firewall Protection
+      ufw:
+        state: enabled
+
+    # ---- Boot / Spin Up Applications ----
+    - name: Launch Express API Server using PM2
+      command: pm2 start index.js --name "travel-backend"
+      args:
+        chdir: "{{ app_dir }}/backend"
+      become: no
+      environment:
+        NODE_ENV: production
+
+    - name: Start React Development App Web UI Server via PM2
+      command: pm2 start node_modules/react-scripts/scripts/start.js --name "travel-frontend" -- --port 3000
+      args:
+        chdir: "{{ app_dir }}/frontend"
+      become: no
+      environment:
+        PORT: 3000
+        BROWSER: none

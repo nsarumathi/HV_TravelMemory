@@ -1,0 +1,249 @@
+---
+# ==========================================
+# STAGE 1: GLOBAL SECURITY HARDENING (All Hosts)
+# ==========================================
+- name: Apply System Hardening on All Servers
+  hosts: all
+  become: yes
+  tasks:
+    - name: Update apt cache and upgrade system packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Disable Root Login via SSH
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitRootLogin'
+        line: 'PermitRootLogin no'
+      notify: Restart SSH
+
+    - name: Disable Password Authentication via SSH
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+      notify: Restart SSH
+
+  handlers:
+    - name: Restart SSH
+      service:
+        name: ssh
+        state: restarted
+
+# ==========================================
+# STAGE 2: DATABASE SERVER SETUP (MongoDB)
+# ==========================================
+- name: Configure MongoDB Database Server
+  hosts: db
+  become: yes
+  vars:
+    mongo_db_name: "travelmemory"
+    mongo_user: "travel_user"
+    mongo_pass: "SecurePassword123" # In production, use ansible-vault to encrypt this!
+  tasks:
+    - name: Install dependencies for MongoDB repository
+      apt:
+        name: [gnupg, curl, python3-pymongo]
+        state: present
+
+    - name: Create directory for system keyrings
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download and save MongoDB 7.0 GPG Key securely
+      get_url:
+        url: https://www.mongodb.org/static/pgp/server-7.0.asc
+        dest: /etc/apt/keyrings/mongodb-server-7.0.asc
+        mode: '0644'
+
+    - name: Add MongoDB 7.0 Repository to sources list
+      apt_repository:
+        repo: "deb [ arch=amd64,arm64 signed-by=/etc/apt/keyrings/mongodb-server-7.0.asc ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse"
+        state: present
+        filename: mongodb-org-7.0
+        update_cache: yes
+
+    - name: Install MongoDB community package
+      apt:
+        name: mongodb-org
+        state: present
+
+    - name: Configure MongoDB to listen on Private IP interface
+      lineinfile:
+        path: /etc/mongod.conf
+        regexp: '  bindIp: 127.0.0.1'
+        line: "  bindIp: 127.0.0.1,{{ ansible_host }}"
+      notify: Restart MongoDB
+
+    - name: Enable MongoDB Authorization Security
+      blockinfile:
+        path: /etc/mongod.conf
+        insertafter: '^security:'
+        block: |
+          security:
+            authorization: enabled
+      notify: Restart MongoDB
+
+    - name: Ensure MongoDB service is started and enabled
+      service:
+        name: mongod
+        state: started
+        enabled: yes
+
+    # Trigger handler early so Mongo is up to accept user creation
+    - meta: flush_handlers
+
+    - name: Create MongoDB Admin User
+      mongodb_user:
+        database: admin
+        name: "admin"
+        password: "AdminSuperSecretPassword"
+        roles: [{ role: "userAdminAnyDatabase", db: "admin" }, { role: "root", db: "admin" }]
+
+    - name: Create TravelMemory Application User and Database
+      mongodb_user:
+        login_user: "admin"                      # <--- ADD THIS
+        login_password: "AdminSuperSecretPassword"  # <--- ADD THIS
+        database: "{{ mongo_db_name }}"
+        name: "{{ mongo_user }}"
+        password: "{{ mongo_pass }}"
+        roles: [{ role: "readWrite", db: "{{ mongo_db_name }}" }]
+
+  handlers:
+    - name: Restart MongoDB
+      service:
+        name: mongod
+        state: restarted
+
+# ==========================================
+# STAGE 3: WEB SERVER SETUP & MERN DEPLOYMENT
+# ==========================================
+- name: Configure Web Server and Deploy App
+  hosts: web
+  become: yes
+  vars:
+    repo_url: "https://github.com/nsarumathi/HV_TravelMemory.git"
+    app_dir: "/var/www/TravelMemory"
+    db_private_ip: "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
+    db_user: "travel_user"
+    db_pass: "SecurePassword123"
+    db_name: "travelmemory"
+  tasks:
+    - name: Install Node.js setup prerequisites
+      apt:
+        name: [curl, git, ufw]
+        state: present
+
+    - name: Download Node.js v20 Setup Script
+      get_url:
+        url: https://deb.nodesource.com/setup_20.x
+        dest: /tmp/node_setup.sh
+        mode: '0755'
+
+    - name: Execute Node.js Setup Script
+      command: /tmp/node_setup.sh
+
+    - name: Install Node.js and NPM
+      apt:
+        name: nodejs
+        state: present
+
+    - name: Install PM2 globally to manage Node.js execution background life
+      npm:
+        name: pm2
+        global: yes
+
+    - name: Create Application Base Directory structure
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Clone the TravelMemory Code Repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        force: yes
+      become: no
+
+    # ---- Express Backend Configuration ----
+    - name: Install Backend Application Dependencies
+      npm:
+        path: "{{ app_dir }}/backend"
+      become: no
+
+    - name: Provision Backend Environment Variables (.env)
+      copy:
+        dest: "{{ app_dir }}/backend/.env"
+        content: |
+          PORT=3001
+          MONGO_URI=mongodb://{{ db_user }}:{{ db_pass }}@{{ db_private_ip }}:27017/{{ db_name }}?authSource={{ db_name }}
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    # ---- React Frontend Configuration ----
+    - name: Install Frontend Application Dependencies
+      npm:
+        path: "{{ app_dir }}/frontend"
+      become: no
+
+    - name: Configure Frontend Connection URL (.env)
+      copy:
+        dest: "{{ app_dir }}/frontend/.env"
+        content: |
+          REACT_APP_BACKEND_URL=http://{{ ansible_host }}:3001
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    # ---- Network Firewall Management (UFW) ----
+    - name: Configure UFW - Allow SSH Connection
+      ufw:
+        rule: allow
+        port: '22'
+        proto: tcp
+
+    - name: Configure UFW - Allow Frontend Interface Traffic (React npm start)
+      ufw:
+        rule: allow
+        port: '3000'
+        proto: tcp
+
+    - name: Configure UFW - Allow Backend API Traffic (Express)
+      ufw:
+        rule: allow
+        port: '3001'
+        proto: tcp
+
+    - name: Enable Firewall Protection
+      ufw:
+        state: enabled
+
+    # ---- Boot / Spin Up Applications ----
+    - name: Stop existing PM2 processes if running to prevent port conflicts
+      shell: pm2 delete all || true
+      ignore_errors: yes
+      become: no
+
+    - name: Launch Express API Server using PM2
+      command: pm2 start index.js --name "travel-backend"
+      args:
+        chdir: "{{ app_dir }}/backend"
+      become: no
+      environment:
+        NODE_ENV: production
+
+    - name: Start React Development App Web UI Server via PM2
+      command: pm2 start node_modules/react-scripts/scripts/start.js --name "travel-frontend" -- --port 3000
+      args:
+        chdir: "{{ app_dir }}/frontend"
+      become: no
+      environment:
+        PORT: 3000
+        BROWSER: none
